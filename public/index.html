@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <meta charset="UTF-8">
+    <script src = ./modules/jquery.js></script>
+    <script src="./modules/chart.js"></script>
+    <script src="./modules/vue.js"></script>
+    <script src="./modules/socket.io.js"></script>
+    <script src="./modules/moment.js"></script>
+    <script src="./modules/md5.js"></script>
+
+
+    <title>Title</title>
+
+    <style>
+
+        body    {padding: 0; margin:0; overflow:hidden;}
+        h1 {position: relative; margin: 0; left: 3%;}
+        .pageTitle {position: absolute; height: 5%; top: 0; width: 20%; left: 40%; border-radius: 0 0 15px 15px; background-color: lightgray; text-align: center;}
+        .container   {width: 100vw; height: 100vh; overflow:hidden; background-color: black; box-shadow: rgba(0, 0, 0, 0.15) 0px 8px 16px 0px}
+        .innerContainer {position: absolute; width: 96%; height: 90%; left: 2%; top:6%; background-color: lightgray; border-radius: 15px; box-shadow: rgba(0, 0, 0, 0.15) 0px 8px 16px 0px;}
+        .serviceCreatorContainer {position: absolute; width: 94%; height: 16%; top: 5%; left: 3%; border-radius: 15px; background-color: white;}
+        .inputContainer {position: absolute; width: 94%; height: 15%; top: 5%; left: 3%; border-radius: 15px; background-color: lightgray;}
+        .contentContaienr {position: relative; width: 44%; left: 2%; height: 70%; top: 22%; padding: 1%; margin: 1%; background-color: white; float: left; border-radius: 15px; box-shadow: rgba(0, 0, 0, 0.15) 0px 8px 16px 0px; overflow: auto;}
+        .service {position: relative; width: 94%; left: 3%; top: 3%; margin-bottom: 5%; height: 12%; background-color: lightgray; border-radius: 15px; box-shadow: rgba(0, 0, 0, 0.15) 0px 8px 16px 0px}
+        .service:hover {background-color: white; cursor: pointer;}
+        .serviceImage {position: relative; top: 3%; left: 3%; height: 94%; width: auto; border-radius: 5px; overflow: hidden; float: left;}
+        .serviceInfo {position: relative; float: left; margin-left: 25px; line-height: 0; background-color: lightgray; font-size: 13px; left: 25px; top: 4%;}
+        .controls {position: absolute; border-radius: 0 15px 15px 0; right:0; top: 0; height: 100%; width: 7.5%;}
+        .control {position: relative; height: 50%; padding: 0; margin: 0; width: 100%; border-radius: 0 15px 0 0; color: white; text-align: center; line-height: 200%; font-weight: bold;}
+        .control:hover {cursor: pointer; filter: brightness(120%)}
+        /* Scrollbar Styling */
+
+        /* width */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        /* Track */
+        ::-webkit-scrollbar-track {
+            background: white;
+        }
+
+        /* Handle */
+        ::-webkit-scrollbar-thumb {
+            background: lightgray;
+        }
+
+        /* Handle on hover */
+        ::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+
+        .stylishButton {border: 0; background-color: #94cdff; color: white; margin: 1%;}
+        .stylishButton:hover {background-color: #4faaff; cursor: pointer;}
+        #adminSwitch {position: absolute; right: 5px; bottom: 5px; width: 25px; height: 5px; background-color: white; border-radius: 5px;}
+
+    </style>
+
+
+</head>
+
+<body>
+
+<div id = vueApp>
+    <h1 class="pageTitle">{{currentPage}}</h1>
+    <admin v-if="isAdmin"></admin>
+    <customer v-if="!isAdmin"></customer>
+    <div id="adminSwitch" @click="toggleAdmin"></div>
+
+</div>
+
+
+<script>
+    let webSocket = io.connect(location.host);
+    let msg
+
+    Vue.component('admin', {
+        /* Component */
+        template: `
+          <div class="container">
+            <div class="innerContainer">
+              <div class="serviceCreatorContainer">
+                <div class="inputContainer">
+                  <input type="file" @change="processImageChange">
+                  <input placeholder="Service Title" v-model="serviceInput.serviceTitleInput">
+                  <input placeholder="Service Price" v-model="serviceInput.servicePriceInput">
+                  <input placeholder="Service Times" v-model="serviceInput.serviceTimesInput">
+                  <button @click="addService" v-if="!this.editing">Create Service</button>
+                  <button @click="editService(currentEditDex, 'push')" v-if="this.editing">Edit Item</button>
+                </div>
+                <div class="service" style="height: 60%; top: 30%;">
+                  <img alt="" :src="serviceInput.serviceImageInput" class="serviceImage">
+                  <pre class="serviceInfo"> <b>{{ serviceInput.serviceTitleInput }}</b>    <b>\${{ serviceInput.servicePriceInput }}</b>    Availability: <b>{{ serviceInput.serviceTimesInput }}</b></pre>
+                </div>
+              </div>
+              <div class="contentContaienr">
+                <h1>Available Services</h1>
+                <div class="service" v-for="(item, index) in this.services">
+                  <img alt="" :src="item.image" class="serviceImage">
+                  <pre class="serviceInfo"> <b>{{ item.name }}</b>    <b>\${{ item.price }}</b>    Availability: <b>{{ availableTimes[0] }} - {{availableTimes[availableTimes.length - 1]}}</b></pre>
+                  <div class="controls">
+                    <div class="control" style="background-color: red;" @click="del('service', index)">DEL</div>
+                    <div class="control" style="background-color: #ffc400; border-radius: 0 0 15px 0;" @click="editService(index, '')">EDIT</div>
+                  </div>
+                </div>
+              </div>
+              <div class="contentContaienr">
+                <h1>Current Appointments</h1>
+                <div class="service" v-for="(item, index) in this.appointments">
+                  <img alt="" :src="item.image" class="serviceImage">
+                  <pre class="serviceInfo"> Service: <b>{{ item.name }}</b>   Client: <b>{{ item.customer }}</b>   Time: <b>{{ item.time }}</b></pre>
+                  <div class="controls">
+                    <div class="control" style="background-color: red; height: 100%; border-radius: 0 15px 15px 0;" @click="del('appt', index)">DEL</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `,
+        data() {
+            return {
+                services: [
+                    {name: 'Scissor Cut', times: "9AM - 5PM", price: 28.5, image: 'https://cdn-icons-png.flaticon.com/512/541/541957.png'},
+                ],
+                appointments: [
+                    {name: "Scissor Cut", time: "9AM", customer: "Ryan", image: 'https://cdn-icons-png.flaticon.com/512/541/541957.png'},
+                ],
+                serviceInput: {serviceTitleInput: '', servicePriceInput: '', serviceTimesInput: '', serviceImageInput: ''},
+                editing: false,
+                currentEditDex: 0,
+                availableTimes: ["9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11 AM", "11:30 AM", "12 PM", "12:30 PM", "1 PM", "1:30 PM", "2 PM", "2:30 PM", "3 PM", "3:30 PM", "4 PM", "4:30 PM", "5:30"],
+            }
+        },
+        methods: { // all methods for components go here
+            processImageChange(event){
+                const file = event.target.files[0];
+                console.log(file)
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        this.serviceInput.serviceImageInput = reader.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            },
+
+            addService(){
+                this.services.push({name: this.serviceInput.serviceTitleInput, times: this.serviceInput.serviceTimesInput, price: parseInt(this.serviceInput.servicePriceInput), image: this.serviceInput.serviceImageInput})
+                this.updateDataOnServer('services');
+            },
+
+            editService(index, type){
+                if(type === 'push'){
+                    console.log(index)
+                    this.services[index] = {name: this.serviceInput.serviceTitleInput, times: this.serviceInput.serviceTimesInput, price: this.serviceInput.servicePriceInput, image: this.serviceInput.serviceImageInput}
+                    this.updateDataOnServer('services');
+                    this.editing = false;
+                    this.clearInputs();
+                    return
+                }
+                this.serviceInput.serviceTitleInput = this.services[index].name;
+                this.serviceInput.servicePriceInput = this.services[index].price;
+                this.serviceInput.serviceTimesInput = this.services[index].times;
+                this.serviceInput.serviceImageInput = this.services[index].image;
+                this.serviceInput.editing = true;
+                this.serviceInput.currentEditDex = index;
+                this.editing = true;
+            },
+
+            del(type, index){
+                console.log(index)
+                switch(type){
+                    case 'service': // If deleting service
+                        this.services.splice(index, 1)
+                        this.updateDataOnServer('services');
+                        break;
+                    case 'appt': // if deleting appointment
+                        this.appointments.splice(index, 1)
+                        this.updateDataOnServer('appointments');
+                        break;
+                    default:
+                        break;
+
+                }
+            },
+
+            clearInputs(){
+              this.serviceInput.serviceImageInput = '';
+              this.serviceInput.serviceTimesInput = '';
+              this.serviceInput.servicePriceInput = '';
+              this.serviceInput.serviceTitleInput = '';
+            },
+
+            updateDataOnServer(type){
+                switch(type){
+                    case 'services':
+                        webSocket.emit('js', JSON.stringify({type: 'updateData', updateType: 'services', data: this.services}))
+                        break;
+                    case 'appointments':
+                        webSocket.emit('js', JSON.stringify({type: 'updateData', updateType: 'appointments', data: this.appointments}))
+                        break;
+                    default:
+                        break;
+
+                }
+            },
+
+
+            async loadData() { // Loads the inventory data from server
+                try {
+                    const response = await fetch('appointments.json');
+                    const response2 = await fetch('services.json');
+                    let data = await response.json();
+                    console.log(response)
+                    let data2 = await response2.json();
+                    console.log(response2)
+                    // Assuming 'data' is an array of items in the 'inventory' property
+                    this.appointments = data;
+                    this.services = data2;
+
+                    // Optionally, perform additional logic if needed
+
+                } catch (error) {
+                    alert('Error loading inventory data: ' + error.message);
+                }
+            },
+
+
+        },
+        computed: { // any function here is run when data is passed to component
+
+        },
+        mounted(){ // here is where things like event listeners go
+
+        },
+        created(){
+            this.loadData();
+        }
+    })
+
+    Vue.component('customer', {
+        /* Component */
+        template: `
+          <div class="container">
+            <div class="innerContainer">
+                <h1>Create appointment</h1>
+              <input type="datetime-local">
+                <div class="contentContaienr" style="position: relative; top: 5%;">
+                  <label>Name</labeL><br>
+                  <input v-model="nameInput" placeholder="Name"><br><br>
+                  <label>Service</label><br>
+                  <select name="Service" id="dropdown">
+                    <option :value=service.name v-for="service in this.services">{{service.name}}</option>
+                  </select><br><br>
+                  <label>Time</label><br>
+                  <div>
+                    <button v-for="item in this.availableTimes" @click="selectTime(item, $event.target)" class="stylishButton">{{item}}</button>
+                  </div>
+                  <br><br>
+                  <button class="stylishButton" @click="bookAppointment">Book Appointment</button>
+                </div>
+            </div>
+          </div>
+        `,
+        data() {
+            return {
+                services: [],
+                appointments: [],
+                selectedTime: "9:00 AM",
+                selectedService: "",
+                nameInput: '',
+                editing: false,
+                availableTimes: ["9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11 AM", "11:30 AM", "12 PM", "12:30 PM", "1 PM", "1:30 PM", "2 PM", "2:30 PM", "3 PM", "3:30 PM", "4 PM", "4:30 PM"],
+            }
+        },
+        methods: { // all methods for components go here
+            selectTime(time, el){
+                let elements = document.getElementsByClassName("stylishButton")
+                for(let i = 0; i < elements.length; i++){
+                    elements[i].style.backgroundColor = "#94cdff"
+                }
+                this.selectedTime = time;
+                el.style.backgroundColor = "#4FAAFFFF";
+            },
+
+            calcRemainingTimes(){
+
+                this.appointments.forEach((item) => {
+                    this.availableTimes.splice(this.availableTimes.indexOf(item.time), 1);
+                })
+
+            },
+
+            updateDataOnServer(type){
+                switch(type){
+                    case 'services':
+                        webSocket.emit('js', JSON.stringify({type: 'updateData', updateType: 'services', data: this.services}))
+                        break;
+                    case 'appointments':
+                        webSocket.emit('js', JSON.stringify({type: 'updateData', updateType: 'appointments', data: this.appointments}))
+                        break;
+                    default:
+                        break;
+
+                }
+            },
+
+            bookAppointment(){
+                this.appointments.push({name: document.getElementById('dropdown').value, time: this.selectedTime, customer: this.nameInput})
+                this.calcRemainingTimes();
+                this.updateDataOnServer('appointments')
+            },
+
+            async loadData() { // Loads the inventory data from server
+                try {
+                    const response = await fetch('appointments.json');
+                    const response2 = await fetch('services.json');
+                    let data = await response.json();
+                    let data2 = await response2.json();
+                    // Assuming 'data' is an array of items in the 'inventory' property
+                    this.appointments = data;
+                    this.services = data2;
+                    // Optionally, perform additional logic if needed
+                    this.calcRemainingTimes();
+
+                } catch (error) {
+                    alert('Error loading inventory data: ' + error.message);
+                }
+            },
+
+        },
+        computed: { // any function here is run when data is passed to component
+
+        },
+        mounted(){ // here is where things like event listeners go
+
+        },
+        created(){
+            this.loadData();
+        }
+    })
+
+
+    let app = new Vue({
+        el: '#vueApp',
+        data() {
+            return {
+                isAdmin: false,
+                currentPage: "Service Manager"
+            }
+        },
+        methods: {
+            toggleAdmin(){
+                app.isAdmin = !app.isAdmin;
+            }
+        },
+        mounted() {
+
+        }
+    })
+
+    webSocket.on('html', function(data) {
+        try {
+            msg = JSON.parse(data);
+
+            switch (msg.type) {
+                case 'recData':
+                    switch(msg.dataType){
+                        case'appointments':
+                            app.$root.$emit('appointments', msg.data)
+                            break;
+                        case 'services':
+                            app.$root.$emit('services', msg.data)
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        } catch (ex) {
+            console.log(ex.message);
+
+        }
+    })
+
+
+</script>
+</body>
+</html>
